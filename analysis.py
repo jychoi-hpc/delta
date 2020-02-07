@@ -15,6 +15,7 @@ import time
 import os
 import queue
 import threading
+import fcntl
 
 parser = argparse.ArgumentParser(description="Perform analysis")
 parser.add_argument('--config', type=str, help='Lists the configuration file', default='config.json')
@@ -61,6 +62,18 @@ num_channels = len(my_channel_list)
 
 #executor = concurrent.futures.ThreadPoolExecutor(max_workers=2)
 executor = concurrent.futures.ProcessPoolExecutor(max_workers=2)
+progressfile = 'progress.dat'
+
+def update_progress():
+    with open(progressfile+'.lock', 'r') as f:
+        fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+        with open(progressfile, 'r+') as f:
+            n = int(f.readline())
+            f.seek(0)
+            n += np.size(channel_data)*channel_data.itemsize
+            print ("n=%d"%n)
+            f.write(str(n)+'\n')
+        fcntl.flock(f.fileno(), fcntl.LOCK_UN)
 
 def perform_analysis(channel_data, step):
     """ 
@@ -77,7 +90,20 @@ def perform_analysis(channel_data, step):
     #time.sleep(5)
     print (">>> analysis rank %d: analysis ... %d: done (%f secs)"%(rank, step, t1-t0))
 
+    ## update progress
+    if step >= 0: 
+        update_progress()
+
 ## Warming up for loading modules
+if rank == 0:
+    with open(progressfile, 'w') as f:
+        f.write('0\n')
+
+    with open(progressfile+'.lock', 'w') as f:
+        pass
+    
+progressfile = 'progress.dat'
+
 print (">>> analysis rank %d: Warming up ... "%rank)
 for i in range(8):
     channel_data = np.zeros((num_channels, 100), dtype=np.float64)
