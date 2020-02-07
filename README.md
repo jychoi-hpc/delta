@@ -25,16 +25,17 @@ For example within an interactive session, using a split terminal (see the scree
 # Workflow Scenario #1
 It consists of three components:
 ```
-  generator.py         =====>    receiver.py         =====>  analysis_adios2.py (not yet implemented)
-(running on KSTAR DTN)   |     (running on NERSC DTN)  |      (running on NERSC compute nodes)
+  generator.py         =====>    receiver.py         =====>    analysis.py
+(running on KSTAR DTN)   |   (running on NERSC DTN)    |     (running on NERSC compute nodes)
                          v                             v
-     stream name: shotnum-channelid.bp          shotnum-channelid.s1.bp
+    stream name: {shotnum}-{channelid}.bp          {shotnum}-{channelid}.s{rank}.bp
 ```
 
 Example commands are as follows:
 ```
-python generator.py --config config-jychoi.json
-python receiver.py --config config-jychoi.json
+python generator.py --config config-kstar.json
+python receiver.py --config config-nersc.json
+srun -n 4 python -u analysis.py --config config-nersc.json
 ```
 
 Parameters can be provided with a Jason file. Here is an example:
@@ -49,7 +50,12 @@ Parameters can be provided with a Jason file. Here is an example:
     "params": {"IPAddress": "203.230.120.125", 
                 "OpenTimeoutSecs": "600"},
     "nstep": 100,
-    "analysis_engine": "BP4"
+    "batch_size": 1000,
+
+    "num_analysis": 4,
+    "analysis_engine": "SST",
+    "analysis_engine_params": {"IPAddress": "127.0.0.1",
+                               "OpenTimeoutSecs": "600"}
 
 }
 ```
