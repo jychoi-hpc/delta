@@ -115,7 +115,7 @@ if __name__ == "__main__":
 
                 # Recover channel data 
                 channel_data = channel_data.reshape((num_channels, channel_data.size // num_channels))
-                print(">>> ({0:d}) Receiver: received data step={1:d}".format(rank, currentStep), channel_data.shape)
+                print(">>> ({0:d}) Receiver: received data step={1:d}".format(rank, currentStep))
 
                 # Save data in a queue then go back to work
                 # Dispatcher (a helper thread) will fetch asynchronously.
