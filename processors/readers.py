@@ -6,25 +6,32 @@ import numpy as np
 
 
 class reader_base():
-    def __init__(self, shotnr, id):
-        comm = MPI.COMM_WORLD
-        self.rank = comm.Get_rank()
-        self.size = comm.Get_size()
+    def __init__(self, shotnr, id, virtual_rank=None, channel=None):
+        if virtual_rank is None:
+            comm = MPI.COMM_WORLD
+            self.rank = comm.Get_rank()
+            self.size = comm.Get_size()
+        else:
+            self.rank = virtual_rank
+            self.size = 1
 
         self.shotnr = shotnr
         self.id = id
         self.adios = adios2.ADIOS(MPI.COMM_SELF)
-        self.IO = self.adios.DeclareIO("stream_{0:03d}".format(self.rank))
-        print("reader_base.__init__(): rank = {0:02d}".format(self.rank))
+        self.channel = channel
+        if self.channel is None:
+            self.IO = self.adios.DeclareIO("stream_{0:03d}".format(self.rank))
+        else:
+            self.IO = self.adios.DeclareIO("stream_{0:03d}_s{1:03d}".format(self.rank, self.channel))
+        self.reader = None
 
-
-    def Open(self, worker_id=None):
+    def Open(self):
         """Opens a new channel"""
-        if worker_id is None:
+        if self.channel is None:
             self.channel_name = "{0:05d}_ch{1:06d}.bp".format(self.shotnr, self.id)
         else:
-            self.channel_name = "{0:05d}_ch{1:06d}.s{2:02d}.bp".format(self.shotnr, self.id, worker_id)
-        print (">>> Opening ... %s"%(self.channel_name))
+            self.channel_name = "{0:05d}_ch{1:06d}_s{2:03d}.bp".format(self.shotnr, self.id, self.channel)
+        print (">>> Reader Opening ... %s"%(self.channel_name))
 
         if self.reader is None:
             self.reader = self.IO.Open(self.channel_name, adios2.Mode.Read)
@@ -94,14 +101,17 @@ class reader_sst(reader_base):
 class reader_gen(reader_base):
     """ General reader to be initialized by name and parameters
     """
-    def __init__(self, shotnr, id, engine, params):
-        super().__init__(shotnr, id)
+    def __init__(self, shotnr, id, engine, params, virtual_rank=None, channel=None):
+        super().__init__(shotnr, id, virtual_rank=virtual_rank, channel=channel)
         self.IO.SetEngine(engine)
         _params = params
         if engine.lower() == "dataman":
-            dataman_port = 12300 + self.rank
+            if self.channel is None:
+                dataman_port = 12300 + self.rank
+            else:
+                dataman_port = 12400 + 10*self.channel
+            print (">>> Reader dataman_port: %d"%dataman_port)
             _params.update(Port = "{0:5d}".format(dataman_port))
         self.IO.SetParameters(_params)
-        self.reader = None
 
 # end of file readers.py

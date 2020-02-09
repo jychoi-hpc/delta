@@ -13,6 +13,9 @@ import os
 import queue
 import threading
 
+from generators.writers import writer_gen
+import sys
+
 parser = argparse.ArgumentParser(description="Receive KSTAR data using ADIOS2")
 parser.add_argument('--config', type=str, help='Lists the configuration file', default='config.json')
 parser.add_argument('--nompi', help='Use with nompi', action='store_true')
@@ -56,6 +59,7 @@ def save_data(worker_id):
     Save channel data with Adios
     """
     print (">>> worker %d: hello"%(worker_id))
+    """
     fname = "{0:05d}_ch{1:06d}.s{2:02d}.bp".format(shotnr, gen_id, worker_id)
     with adios2.open(fname, "w", engine_type=cfg["analysis_engine"]) as fh:
         while True:
@@ -68,9 +72,26 @@ def save_data(worker_id):
             print (">>> worker %d: saving ... %d"%(worker_id, step))
             fh.write("floats", channel_data, shape, offset, count, end_step=True)
             queue_list[worker_id].task_done()
+    """
+
+    while True:
+        channel_data, step = queue_list[worker_id].get()
+        if channel_data is None:
+            break
+
+        if isfirst_list[worker_id]:
+            isfirst_list[worker_id] = False
+            writer = writer_gen(shotnr, gen_id, cfg["analysis_engine"], cfg["analysis_engine_params"], channel=worker_id)
+            writer.DefineVariable(channel_data)
+            writer.Open()
+
+        print (">>> worker %d: saving ... %d"%(worker_id, step))
+        writer.put_data(channel_data)
+        queue_list[worker_id].task_done()
 
 queue_list = list()
 worker_list = list()
+isfirst_list = list()
 
 for n in range(num_analysis):
     dq = queue.Queue()
@@ -78,6 +99,7 @@ for n in range(num_analysis):
     worker = threading.Thread(target=save_data, args=(n,))
     worker.start()
     worker_list.append(worker)
+    isfirst_list.append(True)
 
 #reader = reader_dataman(shotnr, gen_id)
 ## general reader. engine type and params can be changed with the config file

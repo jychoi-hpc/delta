@@ -60,8 +60,8 @@ num_channels = len(my_channel_list)
 ## Thread pool would be good for small number of workers and io-bound jobs.
 ## Processs pool would be good to utilize multiple cores.
 
-#executor = concurrent.futures.ThreadPoolExecutor(max_workers=2)
-executor = concurrent.futures.ProcessPoolExecutor(max_workers=2)
+#executor = concurrent.futures.ThreadPoolExecutor(max_workers=cfg["num_workers"])
+executor = concurrent.futures.ProcessPoolExecutor(max_workers=cfg["num_workers"])
 progressfile = 'progress.dat'
 
 def update_progress():
@@ -94,7 +94,7 @@ def perform_analysis(channel_data, step):
     if step >= 0: 
         update_progress()
 
-## Warming up for loading modules
+## Init progress counter
 if rank == 0:
     with open(progressfile, 'w') as f:
         f.write('0\n')
@@ -104,8 +104,9 @@ if rank == 0:
     
 progressfile = 'progress.dat'
 
+## Warming up for loading modules
 print (">>> analysis rank %d: Warming up ... "%rank)
-for i in range(8):
+for i in range(cfg["num_workers"]):
     channel_data = np.zeros((num_channels, 100), dtype=np.float64)
     executor.submit(perform_analysis, channel_data, -1)
 time.sleep(10)
@@ -113,8 +114,8 @@ print (">>> analysis rank %d: Warming up ... done"%rank)
     
 #reader = reader_dataman(shotnr, gen_id)
 ## general reader. engine type and params can be changed with the config file
-reader = reader_gen(shotnr, gen_id, cfg["analysis_engine"], cfg["analysis_engine_params"])
-reader.Open(worker_id=rank)
+reader = reader_gen(shotnr, gen_id, cfg["analysis_engine"], cfg["analysis_engine_params"], channel=rank)
+reader.Open()
 
 ## jyc:
 ## main loop: 
