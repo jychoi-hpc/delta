@@ -158,6 +158,7 @@ parser.add_argument('--ntasks', type=int, help='Number of tasks (separate execut
 parser.add_argument('--ndispatcher', type=int, help='Number of ndispatcher', default=1)
 parser.add_argument('--checkclock', help='Check clock diff', action='store_true')
 parser.add_argument('--setaffinity', help='Set affinity', action='store_true')
+parser.add_argument('--warmingup', help='do warming up', action='store_true')
 group = parser.add_mutually_exclusive_group()
 group.add_argument('--processpool', help='use ProcessPoolExecutor', action='store_const', dest='pool', const='process')
 group.add_argument('--threadpool', help='use ThreadPoolExecutor', action='store_const', dest='pool', const='thread')
@@ -255,6 +256,8 @@ def hello_mpi(counter):
     counter.value = rank
     pidmap[os.getpid()] = counter.value
     affinity = None
+    if hasattr(os, 'sched_getaffinity'):
+        affinity = os.sched_getaffinity(0)
     logging.info(f"\tWorker: init. rank={rank} pid={os.getpid()} hostname={hostname} ID={pidmap[os.getpid()]} affinity={affinity}")
 
 # Main
@@ -279,6 +282,7 @@ if __name__ == "__main__":
                                     data_array.shape, # count
                                     adios2.ConstantDims)
 
+        t0 = time.time()
         writer = IO.Open('test.bp', adios2.Mode.Write)
 
         for i in range(args.nsteps):
@@ -288,24 +292,26 @@ if __name__ == "__main__":
             writer.EndStep()
 
         writer.Close()
+        t1 = time.time()
+        logging.info(f"Dumping done. time: {t1-t0:.2f}")
 
     ## To ensure to have unique ID for multiple processes or threads
     counter = mp.Value('i', 0)
     if args.pool == 'process':
-        logging.info(f"Using: ProcessPoolExecutor")
+        if rank == 0: logging.info(f"Using: ProcessPoolExecutor")
         pool = ProcessPoolExecutor(max_workers=args.nworkers, initializer=hello, initargs=(counter,))
 
     if args.pool == 'thread':
-        logging.info(f"Using: ThreadPoolExecutor")
+        if rank == 0: logging.info(f"Using: ThreadPoolExecutor")
         pool = ThreadPoolExecutor(max_workers=args.nworkers, initializer=hello, initargs=(counter,))
 
     if args.pool == 'mpicomm':
-        logging.info(f"Using: MPICommExecutor")
+        if rank == 0: logging.info(f"Using: MPICommExecutor")
         pool = MPICommExecutor(comm)
         hello_mpi(counter)
 
     if args.pool == 'mpipool':
-        logging.info(f"Using: MPIPoolExecutor")
+        if rank == 0: logging.info(f"Using: MPIPoolExecutor")
         ## Note: max_workers will be overrite when -m mpi4py.future given in the command line
         ## Note: max_workers includes the master (rank 0) process too (others not.)
         pool = MPIPoolExecutor(max_workers=args.nworkers)
@@ -333,11 +339,13 @@ if __name__ == "__main__":
             # We use another queue to track output (filled with future objects)
             fs = queue.Queue()
 
-
-            # Warming-up (just to make sure workers are created before running main analysis)
-            for _ in executor.map(foo, range(2*max(args.nworkers,size))):
-                pass
-            time.sleep(1)
+            # Warming up workers
+            if args.warmingup:
+                logging.info(f"Warming up workers")
+                # Warming-up (just to make sure workers are created before running main analysis)
+                for _ in executor.map(foo, range(2*max(args.nworkers,size))):
+                    pass
+                time.sleep(1)
 
             ## Check if all workers are successfully created.
             if args.pool in ('process','thread'):
